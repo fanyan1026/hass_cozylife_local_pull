@@ -1,7 +1,7 @@
 {
-  "domain": "hass_cozylife_local_pull",
-  "name": "CozyLife local",
-  "documentation": "https://github.com/cozylife/hass_cozylife_local_pull",
+  "domain": "cozylife_local",
+  "name": "CozyLife Local",
+  "documentation": "https://github.com/fanyan1026/cozylife_local",
   "dependencies": [],
   "codeowners": [],
   "requirements": ["aiohttp>=3.8.0"],

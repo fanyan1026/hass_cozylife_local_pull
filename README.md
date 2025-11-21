@@ -1,11 +1,9 @@
 # CozyLife Local Integration
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 
 Home Assistant 本地集成，用于控制 CozyLife 智能设备。
 
-## 🆕 新版本 v2.0 重大更新
+## 🆕 新版本 v2.0.1 重大更新
 
 ### ✨ 全新特性
 - 🎯 **可视化配置** - 通过 UI 界面添加设备，告别配置文件
@@ -36,7 +34,7 @@ Home Assistant 本地集成，用于控制 CozyLife 智能设备。
 
 ### ⚠️ 重要提示
 
-**v2.0 是重大更新，不向后兼容！**
+**v2.0.1 是重大更新，不向后兼容！**
 
 如果您从旧版本升级：
 1. 删除 `configuration.yaml` 中的旧配置
@@ -54,7 +52,7 @@ Home Assistant 本地集成，用于控制 CozyLife 智能设备。
 ### ❓ 常见问题
 
 **Q: 为什么我的旧配置不工作了？**  
-A: v2.0 完全重构，请使用新的 UI 配置方式。
+A: v2.0.1 完全重构，请使用新的 UI 配置方式。
 
 **Q: 如何手动指定设备 IP？**  
 A: 在集成界面中选择"手动输入"选项。
@@ -69,7 +67,7 @@ A: 检查设备 IP 和端口(默认5555)，确保网络连通。
 
 - [更新日志](CHANGELOG.md) - 版本历史和新特性
 - [迁移指南](MIGRATION.md) - 从旧版本升级说明
-- [问题反馈](https://github.com/fanyan1026/hass_cozylife_local_pull/issues) - 报告问题和建议
+- [问题反馈](https://github.com/fanyan1026/cozylife_local/issues) - 报告问题和建议
 
 ### 🛠 开发信息
 

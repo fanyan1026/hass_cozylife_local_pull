@@ -47,10 +47,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=vol.Schema({
                     vol.Required(CONF_HOST): str,
                     vol.Optional(CONF_PORT, default=5555): int,
-                }),
-                description_placeholders={
-                    "device_count": "0"
-                }
+                })
             )
 
         # 处理手动输入的表单提交
@@ -88,10 +85,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_HOST, default=user_input.get(CONF_HOST, "")): str,
                 vol.Optional(CONF_PORT, default=user_input.get(CONF_PORT, 5555)): int,
             }),
-            errors=errors,
-            description_placeholders={
-                "device_count": "0"
-            }
+            errors=errors
         )
 
     async def async_step_select_device(
@@ -145,7 +139,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device: f"CozyLife Device ({device})" 
             for device in self.discovered_devices
         }
-        device_options["manual"] = "手动输入设备地址"
+        device_options["manual"] = "Manual Entry"
         
         schema = vol.Schema({
             vol.Required("selected_device"): vol.In(device_options)
@@ -201,10 +195,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_HOST): str,
                 vol.Optional(CONF_PORT, default=5555): int,
             }),
-            errors=errors,
-            description_placeholders={
-                "device_count": "0"
-            }
+            errors=errors
         )
 
 
