@@ -2,11 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "添加 CozyLife 设备",
-        "data": {
-          "host": "主机地址",
-          "port": "端口"
-        }
+        "title": "设置 CozyLife Local",
+        "description": "请选择要添加的设备"
       },
       "select_device": {
         "title": "选择设备",
@@ -16,19 +13,39 @@
         }
       },
       "manual": {
-        "title": "手动输入设备",
+        "title": "手动添加设备",
+        "description": "请手动输入设备信息",
         "data": {
-          "host": "设备 IP 地址",
+          "host": "主机地址 (IP)",
           "port": "端口"
         }
       }
     },
     "error": {
-      "cannot_connect": "无法连接到设备",
+      "cannot_connect": "无法连接到设备，请检查IP地址和端口",
       "unknown": "发生未知错误"
     },
     "abort": {
-      "already_configured": "设备已配置"
+      "already_configured": "设备已被配置"
+    }
+  },
+  "title": "CozyLife Local",
+  "device_automation": {
+    "trigger_type": {
+      "turned_on": "打开",
+      "turned_off": "关闭"
+    }
+  },
+  "entity": {
+    "switch": {
+      "cozylife_switch": {
+        "name": "开关"
+      }
+    },
+    "light": {
+      "cozylife_light": {
+        "name": "灯"
+      }
     }
   }
 }

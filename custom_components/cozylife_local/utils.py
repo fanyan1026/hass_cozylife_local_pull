@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from functools import lru_cache
 from typing import Any
 
 import aiohttp
@@ -14,16 +13,15 @@ from .const import API_DOMAIN, LANG
 _LOGGER = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=None)
 async def async_get_pid_list(lang: str = LANG) -> list:
     """
-    Async non-blocking fetch of product ID list from API with caching
+    Async non-blocking fetch of product ID list from API
     Reference: http://doc.doit/project-12/doc-95/
     """
     # Validate language parameter
     supported_langs = {'zh', 'en', 'es', 'pt', 'ja', 'ru', 'nl', 'ko', 'fr', 'de'}
     if lang not in supported_langs:
-        _LOGGER.warning(f'Unsupported language {lang}, falling back to default {LANG}')
+        _LOGGER.warning('Unsupported language %s, falling back to default %s', lang, LANG)
         lang = LANG
 
     url = f'http://{API_DOMAIN}/api/v2/device_product/model'
@@ -37,13 +35,13 @@ async def async_get_pid_list(lang: str = LANG) -> list:
                     if data.get('ret') == '1':
                         return data.get('info', {}).get('list', [])
                     else:
-                        _LOGGER.error(f"API returned error: {data}")
+                        _LOGGER.error("API returned error: %s", data)
                         return []
                 else:
-                    _LOGGER.error(f"API request failed with status: {response.status}")
+                    _LOGGER.error("API request failed with status: %s", response.status)
                     return []
     except Exception as exc:
-        _LOGGER.error(f"Failed to fetch PID list: {exc}")
+        _LOGGER.error("Failed to fetch PID list: %s", exc)
         return []
 
 
@@ -56,26 +54,20 @@ def get_sn() -> str:
     return str(int(round(time.time() * 1000)))
 
 
-# 保持同步版本用于向后兼容
+# 同步版本 - 使用事件循环运行异步函数
 def get_pid_list(lang='en') -> list:
     """
     Sync version for backward compatibility
     """
-    import asyncio
     try:
-        # 如果在事件循环中运行，使用嵌套事件循环
+        # 尝试在现有事件循环中运行
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # 如果事件循环正在运行，创建一个新的事件循环
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                result = new_loop.run_until_complete(async_get_pid_list(lang))
-                return result
-            finally:
-                new_loop.close()
-                asyncio.set_event_loop(loop)
+            # 如果事件循环正在运行，创建新任务
+            future = asyncio.run_coroutine_threadsafe(async_get_pid_list(lang), loop)
+            return future.result(timeout=30)
         else:
+            # 如果事件循环未运行，直接运行
             return loop.run_until_complete(async_get_pid_list(lang))
     except RuntimeError:
         # 如果没有事件循环，创建一个

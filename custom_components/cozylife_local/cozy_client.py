@@ -32,7 +32,7 @@ class CozyClient:
     def __init__(self, host: str, port: int = 5555, hass=None):
         self.host = host
         self.port = port
-        self.hass = hass  # 保存 hass 引用
+        self.hass = hass
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._connected = False
@@ -42,6 +42,11 @@ class CozyClient:
         self._device_model_name: str | None = None
         self._dpid: list = []
         self._sn: str | None = None
+        self._lock = asyncio.Lock()
+        # 缓存初始状态，避免重复查询
+        self._initial_state: dict = {}
+        # 跟踪连接尝试
+        self._connection_attempts = 0
 
     @property
     def connected(self) -> bool:
@@ -63,44 +68,70 @@ class CozyClient:
     def dpid(self) -> list:
         return self._dpid
 
+    @property
+    def initial_state(self) -> dict:
+        """返回缓存的初始状态"""
+        return self._initial_state
+
     async def async_connect(self) -> None:
-        """Async connect to device."""
+        """Async connect to device and get initial state."""
         if self._connected:
+            _LOGGER.debug("Already connected to %s:%s", self.host, self.port)
             return
 
+        self._connection_attempts += 1
+        _LOGGER.debug("Connection attempt %d to %s:%s", self._connection_attempts, self.host, self.port)
+
         try:
+            # 建立 TCP 连接
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port),
                 timeout=5.0
             )
             self._connected = True
-            _LOGGER.info(f"Connected to {self.host}:{self.port}")
+            self._connection_attempts = 0  # 重置尝试次数
+            _LOGGER.info("Connected to %s:%s", self.host, self.port)
 
-            # 获取设备信息
-            await self._async_device_info()
+            # 立即获取设备信息和初始状态
+            await self._async_get_basic_device_info()
+            # 获取初始设备状态
+            self._initial_state = await self.async_query()
+            _LOGGER.debug("Retrieved initial state for %s: %s", self.host, self._initial_state)
 
         except asyncio.TimeoutError:
+            _LOGGER.warning("Connection timeout to %s:%s", self.host, self.port)
+            await self._safe_disconnect()
             raise ConnectionRefusedError(f"Connection timeout to {self.host}:{self.port}")
         except Exception as exc:
+            _LOGGER.warning("Connection failed to %s:%s: %s", self.host, self.port, exc)
+            await self._safe_disconnect()
             raise HomeAssistantError(f"Failed to connect: {exc}")
 
-    async def async_disconnect(self) -> None:
-        """Async disconnect from device."""
+    async def _safe_disconnect(self) -> None:
+        """Safely disconnect from device."""
         self._connected = False
         if self._writer:
             self._writer.close()
-            await self._writer.wait_closed()
+            try:
+                await asyncio.wait_for(self._writer.wait_closed(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
             self._writer = None
             self._reader = None
 
-    async def _async_device_info(self) -> None:
-        """Get device information."""
+    async def async_disconnect(self) -> None:
+        """Async disconnect from device."""
+        await self._safe_disconnect()
+        _LOGGER.debug("Disconnected from %s:%s", self.host, self.port)
+
+    async def _async_get_basic_device_info(self) -> None:
+        """Get basic device information needed for platform setup."""
         try:
             await self._async_send_command(CMD_INFO, {})
             response = await self._async_receive()
             
             if not response or 'msg' not in response:
-                _LOGGER.error("Invalid device info response")
+                _LOGGER.warning("Invalid device info response from %s", self.host)
                 return
 
             msg = response['msg']
@@ -108,34 +139,41 @@ class CozyClient:
             self._pid = msg.get('pid')
 
             if not self._device_id or not self._pid:
-                _LOGGER.error("Missing device ID or PID")
+                _LOGGER.warning("Missing device ID or PID from %s", self.host)
                 return
 
-            # 获取设备型号信息 - 使用 hass 执行同步函数
-            if self.hass:
-                pid_list = await self.hass.async_add_executor_job(get_pid_list)
-                for item in pid_list:
-                    for item1 in item.get('m', []):
-                        if item1.get('pid') == self._pid:
-                            self._device_model_name = item1.get('n', 'Unknown')
-                            self._dpid = item1.get('dpid', [])
-                            self._device_type_code = item.get('c', LIGHT_TYPE_CODE)
-                            _LOGGER.info(f"Device info: {self._device_model_name}, type: {self._device_type_code}")
-                            return
-            else:
-                # 如果没有 hass，直接调用同步函数（在配置流中）
-                pid_list = get_pid_list()
-                for item in pid_list:
-                    for item1 in item.get('m', []):
-                        if item1.get('pid') == self._pid:
-                            self._device_model_name = item1.get('n', 'Unknown')
-                            self._dpid = item1.get('dpid', [])
-                            self._device_type_code = item.get('c', LIGHT_TYPE_CODE)
-                            _LOGGER.info(f"Device info: {self._device_model_name}, type: {self._device_type_code}")
-                            return
+            # 获取设备类型信息
+            await self._async_get_device_type()
 
         except Exception as exc:
-            _LOGGER.error(f"Failed to get device info: {exc}")
+            _LOGGER.warning("Failed to get basic device info from %s: %s", self.host, exc)
+
+    async def _async_get_device_type(self) -> None:
+        """Get device type information."""
+        try:
+            # 使用同步方式获取设备类型
+            if self.hass:
+                pid_list = await self.hass.async_add_executor_job(get_pid_list)
+            else:
+                pid_list = get_pid_list()
+
+            for item in pid_list:
+                for item1 in item.get('m', []):
+                    if item1.get('pid') == self._pid:
+                        self._device_model_name = item1.get('n', 'Unknown')
+                        self._dpid = item1.get('dpid', [])
+                        self._device_type_code = item.get('c', LIGHT_TYPE_CODE)
+                        _LOGGER.info(
+                            "Device info: %s, type: %s", 
+                            self._device_model_name, 
+                            self._device_type_code
+                        )
+                        return
+
+            _LOGGER.warning("No device model found for PID: %s", self._pid)
+
+        except Exception as exc:
+            _LOGGER.warning("Failed to get device type for %s: %s", self.host, exc)
 
     def _get_package(self, cmd: int, payload: dict) -> bytes:
         """Create command package."""
@@ -178,7 +216,7 @@ class CozyClient:
             raise HomeAssistantError("Not connected to device")
 
         data = self._get_package(cmd, payload)
-        _LOGGER.debug(f"Sending command: {data.decode('utf-8').strip()}")
+        _LOGGER.debug("Sending command to %s: %s", self.host, data.decode('utf-8').strip())
         
         self._writer.write(data)
         await self._writer.drain()
@@ -191,32 +229,48 @@ class CozyClient:
         try:
             data = await asyncio.wait_for(
                 self._reader.readuntil(b"\r\n"),
-                timeout=5.0
+                timeout=3.0
             )
             response = json.loads(data.decode('utf-8').strip())
-            _LOGGER.debug(f"Received response: {response}")
+            _LOGGER.debug("Received response from %s: %s", self.host, response)
             return response
         except asyncio.TimeoutError:
-            _LOGGER.error("Receive timeout")
+            _LOGGER.debug("Receive timeout from %s", self.host)
             return None
         except Exception as exc:
-            _LOGGER.error(f"Receive error: {exc}")
+            _LOGGER.debug("Receive error from %s: %s", self.host, exc)
             return None
 
     async def async_query(self) -> dict:
         """Query device state."""
-        await self._async_send_command(CMD_QUERY, {})
-        
-        # 可能需要接收多个响应，找到匹配 SN 的
-        for _ in range(10):
-            response = await self._async_receive()
-            if response and response.get('sn') == self._sn:
-                msg = response.get('msg', {})
-                return msg.get('data', {})
-        
-        return {}
+        if not self._connected:
+            return {}
+            
+        async with self._lock:
+            try:
+                await self._async_send_command(CMD_QUERY, {})
+                
+                for _ in range(3):
+                    response = await self._async_receive()
+                    if response and response.get('sn') == self._sn:
+                        msg = response.get('msg', {})
+                        return msg.get('data', {})
+                
+                _LOGGER.debug("No valid response from %s after 3 attempts", self.host)
+                return {}
+            except Exception as exc:
+                _LOGGER.debug("Query failed for %s: %s", self.host, exc)
+                return {}
 
     async def async_control(self, payload: dict) -> bool:
         """Send control command to device."""
-        await self._async_send_command(CMD_SET, payload)
-        return True
+        if not self._connected:
+            return False
+            
+        async with self._lock:
+            try:
+                await self._async_send_command(CMD_SET, payload)
+                return True
+            except Exception as exc:
+                _LOGGER.debug("Control failed for %s: %s", self.host, exc)
+                return False

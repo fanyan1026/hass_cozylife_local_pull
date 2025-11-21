@@ -2,11 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add CozyLife Device",
-        "data": {
-          "host": "Host",
-          "port": "Port"
-        }
+        "title": "Setup CozyLife Local",
+        "description": "Please select the device to add"
       },
       "select_device": {
         "title": "Select Device",
@@ -17,18 +14,38 @@
       },
       "manual": {
         "title": "Manual Device Entry",
+        "description": "Please manually enter device information",
         "data": {
-          "host": "Device IP Address",
+          "host": "Host Address (IP)",
           "port": "Port"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to device",
+      "cannot_connect": "Failed to connect to device, please check IP address and port",
       "unknown": "Unknown error occurred"
     },
     "abort": {
       "already_configured": "Device is already configured"
+    }
+  },
+  "title": "CozyLife Local",
+  "device_automation": {
+    "trigger_type": {
+      "turned_on": "Turned on",
+      "turned_off": "Turned off"
+    }
+  },
+  "entity": {
+    "switch": {
+      "cozylife_switch": {
+        "name": "Switch"
+      }
+    },
+    "light": {
+      "cozylife_light": {
+        "name": "Light"
+      }
     }
   }
 }

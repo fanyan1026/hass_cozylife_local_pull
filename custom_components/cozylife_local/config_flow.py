@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.exceptions import HomeAssistantError
+import homeassistant.helpers.config_validation as cv
 
 from .const import DOMAIN
 from .udp_discover import async_discover_devices
@@ -33,26 +33,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         errors: dict[str, str] = {}
 
-        # 如果是第一次进入，尝试发现设备
         if user_input is None:
             self.discovered_devices = await async_discover_devices()
             
-            # 如果有发现的设备，显示选择步骤
             if self.discovered_devices:
                 return await self.async_step_select_device()
             
-            # 如果没有发现设备，直接显示手动输入表单
-            return self.async_show_form(
-                step_id="manual",
-                data_schema=vol.Schema({
-                    vol.Required(CONF_HOST): str,
-                    vol.Optional(CONF_PORT, default=5555): int,
-                })
-            )
+            return await self.async_step_manual()
 
-        # 处理手动输入的表单提交
         try:
-            # 验证连接
             from .cozy_client import CozyClient
             
             client = CozyClient(
@@ -63,7 +52,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await client.async_connect()
             await client.async_disconnect()
 
-            # 设置唯一ID
             await self.async_set_unique_id(user_input[CONF_HOST])
             self._abort_if_unique_id_configured()
 
@@ -78,15 +66,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
 
-        # 显示错误并重新显示表单
-        return self.async_show_form(
-            step_id="manual",
-            data_schema=vol.Schema({
-                vol.Required(CONF_HOST, default=user_input.get(CONF_HOST, "")): str,
-                vol.Optional(CONF_PORT, default=user_input.get(CONF_PORT, 5555)): int,
-            }),
-            errors=errors
-        )
+        return await self.async_step_manual(errors, user_input)
 
     async def async_step_select_device(
         self, user_input: dict[str, Any] | None = None
@@ -98,13 +78,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             selected_option = user_input.get("selected_device")
             
             if selected_option == "manual":
-                # 用户选择手动输入
                 return await self.async_step_manual()
             
-            # 用户选择了一个发现的设备
             self.selected_device = selected_option
             
-            # 验证所选设备的连接
             try:
                 from .cozy_client import CozyClient
                 
@@ -116,7 +93,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await client.async_connect()
                 await client.async_disconnect()
 
-                # 设置唯一ID
                 await self.async_set_unique_id(self.selected_device)
                 self._abort_if_unique_id_configured()
 
@@ -134,12 +110,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # 创建设备选择表单
+        # 创建设备选择表单，使用翻译键
         device_options = {
-            device: f"CozyLife Device ({device})" 
+            device: f"CozyLife 设备 ({device})"
             for device in self.discovered_devices
         }
-        device_options["manual"] = "Manual Entry"
+        device_options["manual"] = "手动输入"
         
         schema = vol.Schema({
             vol.Required("selected_device"): vol.In(device_options)
@@ -155,14 +131,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_manual(
-        self, user_input: dict[str, Any] | None = None
+        self, errors: dict[str, str] | None = None, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Show manual device entry form."""
-        errors: dict[str, str] = {}
+        if errors is None:
+            errors = {}
 
         if user_input is not None:
             try:
-                # 验证连接
                 from .cozy_client import CozyClient
                 
                 client = CozyClient(
@@ -173,7 +149,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await client.async_connect()
                 await client.async_disconnect()
 
-                # 设置唯一ID
                 await self.async_set_unique_id(user_input[CONF_HOST])
                 self._abort_if_unique_id_configured()
 
@@ -188,7 +163,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # 显示手动输入表单
         return self.async_show_form(
             step_id="manual",
             data_schema=vol.Schema({
@@ -197,7 +171,3 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             errors=errors
         )
-
-
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
